@@ -1,16 +1,25 @@
-// another github test test target
 // **********************************************************************************
-// This sketch is an example of how wireless programming can be achieved with a Moteino
-// that was loaded with a custom 1k bootloader (DualOptiboot) that is capable of loading
-// a new sketch from an external SPI flash chip
-// The sketch includes logic to receive the new sketch 'over-the-air' and store it in
-// the FLASH chip, then restart the Moteino so the bootloader can continue the job of
-// actually reflashing the internal flash memory from the external FLASH memory chip flash image
-// The handshake protocol that receives the sketch wirelessly by means of the RFM69 radio
-// is handled by the SPIFLash/RFM69_OTA library, which also relies on the RFM69 library
-// These libraries and custom 1k Optiboot bootloader are at: http://github.com/lowpowerlab
+// This sketch is the base code loaded onto the RCMH Wireless Antler Hat nodes.
+// Its purpose is to:
+// - Manually update the NODEID parameter, compile, and upload to an individual node.
+// - Initialize the EEPROM and save the given config settings into the EEPROM.
+// - Sit and wait for further OTA updates. Upon receiving an OTA update the node reloads
+// and this sketch is no more.
+//
+// As currently written, this sketch will OVERWRITE any previously saved configs, it 
+// intentionally does not check for an existing config.
+// OTA updates will retain their config settings (if so desired and appropriately
+// programmed).
+// 
 // **********************************************************************************
-// Copyright Felix Rusu 2020, http://www.LowPowerLab.com/contact
+// Change Log
+// **********************************************************************************
+// 2021-10-12 - Added writing config to EEPROM
+//
+// **********************************************************************************
+// Initial code Copyright Felix Rusu 2020, http://www.LowPowerLab.com/contact
+// Further revisions Copyright 2021 Madison Square Garden Entertainment
+// contact: Michael Sauder - michael.sauder@msg.com
 // **********************************************************************************
 // License
 // **********************************************************************************
@@ -36,24 +45,25 @@
 #include <RFM69_ATC.h>     //get it here: https://github.com/lowpowerlab/RFM69
 #include <RFM69_OTA.h>     //get it here: https://github.com/lowpowerlab/RFM69
 #include <SPIFlash.h>      //get it here: https://github.com/lowpowerlab/spiflash
+#include <EEPROMex.h>      //get it here: http://playground.arduino.cc/Code/EEPROMex
+
 //****************************************************************************************************************
 //**** IMPORTANT RADIO SETTINGS - YOU MUST CHANGE/CONFIGURE TO MATCH YOUR HARDWARE TRANSCEIVER CONFIGURATION! ****
 //****************************************************************************************************************
-#define NODEID       201  // node ID used for this unit
-#define NETWORKID    150
-//Match frequency to the hardware version of the radio on your Moteino (uncomment one):
-//#define FREQUENCY   RF69_433MHZ
-//#define FREQUENCY   RF69_868MHZ
+#define NODEID        202  // node ID used for this unit
+#define NETWORKID     150
+#define GATEWAYID     1    // node ID for the default gateway.
 #define FREQUENCY     RF69_915MHZ
 #define FREQUENCY_EXACT 905500000
-#define ENCRYPTKEY  "rcmhprodrcmhprod" //16-bytes or ""/0/null for no encryption
-#define IS_RFM69HW_HCW  //uncomment only for RFM69HW/HCW! Leave out if you have RFM69W/CW!
+#define ENCRYPTKEY "rcmhprodrcmhprod" //16-bytes or ""/0/null for no encryption
+//String ENCRYPTKEYSTRING = "rcmhprodrcmhprod";
+#define IS_RFM69HW_HCW true //uncomment only for RFM69HW/HCW! Leave out if you have RFM69W/CW!
 //*****************************************************************************************************************************
 #define ENABLE_ATC    //comment out this line to disable AUTO TRANSMISSION CONTROL
 #define ATC_RSSI      -80
 #define FLASH_ID      0xEF30  //ex. 0xEF30 for windbond 4mbit, 0xEF40 for windbond 16/64mbit
 //*****************************************************************************************************************************
-//#define BR_300KBPS         //run radio at max rate of 300kbps!
+//#define BR_300KBPS         //run radio at max rate of 300kbps! Probably never want this.
 //*****************************************************************************************************************************
 #define SERIAL_BAUD 115200
 #define BLINKPERIOD 250
@@ -66,15 +76,30 @@ SPIFlash flash(SS_FLASHMEM, FLASH_ID);
   RFM69 radio;
 #endif
 
+
 char input = 0;
 long lastPeriod = -1;
 
+
+struct configuration {
+  byte frequency; // What family are we working in? Basically always going to be 915Mhz in RCMH.
+  long frequency_exact; // The exact frequency we're operating at.
+  byte isHW;
+  byte nodeID;    // 8bit address (up to 255)
+  byte networkID; // 8bit address (up to 255)
+  byte gatewayID; // 8bit address (up to 255)
+  char encryptionKey[16];
+  byte state;     // Just in case we want to save a state setting.
+} CONFIG;
+
 void setup() {
-  pinMode(LED_BUILTIN, OUTPUT);
+ EEPROM.setMaxAllowedWrites(10000);
+  EEPROM.readBlock(0, CONFIG); pinMode(LED_BUILTIN, OUTPUT);
+
   Serial.begin(SERIAL_BAUD);
   delay(1000);
   radio.initialize(FREQUENCY,NODEID,NETWORKID);
-  radio.encrypt(ENCRYPTKEY); //OPTIONAL
+  radio.encrypt(CONFIG.encryptionKey); //OPTIONAL
 
 #ifdef FREQUENCY_EXACT
   radio.setFrequency(FREQUENCY_EXACT); //set frequency to some custom frequency
@@ -105,6 +130,41 @@ void setup() {
   radio.writeReg(0x06, 0x33);  //REG_FDEVLSB: 300khz (0x1333)
   radio.writeReg(0x29, 240);   //set REG_RSSITHRESH to -120dBm
 #endif
+
+// Program the EEPROM
+
+
+
+
+CONFIG.frequency=FREQUENCY;
+CONFIG.frequency_exact=FREQUENCY_EXACT;
+CONFIG.isHW=IS_RFM69HW_HCW;
+CONFIG.nodeID=NODEID;
+CONFIG.networkID=NETWORKID;
+CONFIG.gatewayID=GATEWAYID;
+
+// Having some stupid problem related to the rfm69 library requiring the "ENCRYPTKEY" to be a const char array,
+// having trouble converting, AND having trouble with a loop for some reason. Am newbie. So eff it, brute forcing.
+CONFIG.encryptionKey[0]=ENCRYPTKEY[0];
+CONFIG.encryptionKey[1]=ENCRYPTKEY[1];
+CONFIG.encryptionKey[2]=ENCRYPTKEY[2];
+CONFIG.encryptionKey[3]=ENCRYPTKEY[3];
+CONFIG.encryptionKey[4]=ENCRYPTKEY[4];
+CONFIG.encryptionKey[5]=ENCRYPTKEY[5];
+CONFIG.encryptionKey[6]=ENCRYPTKEY[6];
+CONFIG.encryptionKey[7]=ENCRYPTKEY[7];
+CONFIG.encryptionKey[8]=ENCRYPTKEY[8];
+CONFIG.encryptionKey[9]=ENCRYPTKEY[9];
+CONFIG.encryptionKey[10]=ENCRYPTKEY[10];
+CONFIG.encryptionKey[11]=ENCRYPTKEY[11];
+CONFIG.encryptionKey[12]=ENCRYPTKEY[12];
+CONFIG.encryptionKey[13]=ENCRYPTKEY[13];
+CONFIG.encryptionKey[14]=ENCRYPTKEY[14];
+CONFIG.encryptionKey[15]=ENCRYPTKEY[15];
+
+EEPROM.writeBlock(0,CONFIG);
+Serial.println("CONFIG saved to EEPROM");
+
 }
 
 void loop(){
