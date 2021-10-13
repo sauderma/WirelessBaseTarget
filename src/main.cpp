@@ -50,7 +50,7 @@
 //****************************************************************************************************************
 //**** IMPORTANT RADIO SETTINGS - YOU MUST CHANGE/CONFIGURE TO MATCH YOUR HARDWARE TRANSCEIVER CONFIGURATION! ****
 //****************************************************************************************************************
-#define NODEID        202  // node ID used for this unit
+#define NODEID        203  // node ID used for this unit
 #define NETWORKID     150
 #define GATEWAYID     1    // node ID for the default gateway.
 #define FREQUENCY     RF69_915MHZ
@@ -90,16 +90,17 @@ struct configuration {
   byte gatewayID; // 8bit address (up to 255)
   char encryptionKey[16];
   byte state;     // Just in case we want to save a state setting.
+  byte codeVersion; // What version code we're using
 } CONFIG;
 
 void setup() {
- EEPROM.setMaxAllowedWrites(10000);
+  EEPROM.setMaxAllowedWrites(10000);
   EEPROM.readBlock(0, CONFIG); pinMode(LED_BUILTIN, OUTPUT);
 
   Serial.begin(SERIAL_BAUD);
   delay(1000);
   radio.initialize(FREQUENCY,NODEID,NETWORKID);
-  radio.encrypt(CONFIG.encryptionKey); //OPTIONAL
+  radio.encrypt(ENCRYPTKEY); //OPTIONAL
 
 #ifdef FREQUENCY_EXACT
   radio.setFrequency(FREQUENCY_EXACT); //set frequency to some custom frequency
@@ -133,16 +134,12 @@ void setup() {
 
 // Program the EEPROM
 
-
-
-
 CONFIG.frequency=FREQUENCY;
 CONFIG.frequency_exact=FREQUENCY_EXACT;
 CONFIG.isHW=IS_RFM69HW_HCW;
 CONFIG.nodeID=NODEID;
 CONFIG.networkID=NETWORKID;
 CONFIG.gatewayID=GATEWAYID;
-
 // Having some stupid problem related to the rfm69 library requiring the "ENCRYPTKEY" to be a const char array,
 // having trouble converting, AND having trouble with a loop for some reason. Am newbie. So eff it, brute forcing.
 CONFIG.encryptionKey[0]=ENCRYPTKEY[0];
