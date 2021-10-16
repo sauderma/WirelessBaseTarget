@@ -87,7 +87,7 @@ struct configuration {
   byte codeVersion; // What version code we're using
   byte frequency; // What family are we working in? Basically always going to be 915Mhz in RCMH.
   long frequency_exact; // The exact frequency we're operating at.
-  byte isHW; // Is this a high power radio?
+  bool isHW; // Is this a high power radio?
   byte nodeID;    // 8bit address (up to 255)
   byte networkID; // 8bit address (up to 255)
   byte gatewayID1; // 8bit address (up to 255)
