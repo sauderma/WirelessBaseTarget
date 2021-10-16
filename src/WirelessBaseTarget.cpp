@@ -52,7 +52,8 @@
 //****************************************************************************************************************
 #define NODEID        203  // node ID used for this unit
 #define NETWORKID     150
-#define GATEWAYID     1    // node ID for the default gateway.
+#define GATEWAYID1     1    // node ID for the default gateway.
+#define GATEWAYID2     2    // node ID for the default gateway.
 #define FREQUENCY     RF69_915MHZ
 #define FREQUENCY_EXACT 905500000
 #define ENCRYPTKEY "rcmhprodrcmhprod" //16-bytes or ""/0/null for no encryption
@@ -81,16 +82,19 @@ char input = 0;
 long lastPeriod = -1;
 
 
+// struct for EEPROM config
 struct configuration {
+  byte codeVersion; // What version code we're using
   byte frequency; // What family are we working in? Basically always going to be 915Mhz in RCMH.
   long frequency_exact; // The exact frequency we're operating at.
-  byte isHW;
+  byte isHW; // Is this a high power radio?
   byte nodeID;    // 8bit address (up to 255)
   byte networkID; // 8bit address (up to 255)
-  byte gatewayID; // 8bit address (up to 255)
+  byte gatewayID1; // 8bit address (up to 255)
+  byte gatewayID2; // 8bit address (up to 255)
   char encryptionKey[16];
-  byte state;     // Just in case we want to save a state setting.
-  byte codeVersion; // What version code we're using
+  int state;     // Just in case we want to save a state setting.
+  
 } CONFIG;
 
 void setup() {
@@ -139,7 +143,8 @@ CONFIG.frequency_exact=FREQUENCY_EXACT;
 CONFIG.isHW=IS_RFM69HW_HCW;
 CONFIG.nodeID=NODEID;
 CONFIG.networkID=NETWORKID;
-CONFIG.gatewayID=GATEWAYID;
+CONFIG.gatewayID1=GATEWAYID1;
+CONFIG.gatewayID2=GATEWAYID2;
 // Having some stupid problem related to the rfm69 library requiring the "ENCRYPTKEY" to be a const char array,
 // having trouble converting, AND having trouble with a loop for some reason. Am newbie. So eff it, brute forcing.
 CONFIG.encryptionKey[0]=ENCRYPTKEY[0];
@@ -216,16 +221,10 @@ void loop(){
       Serial.print("RFM69 registers:");
       radio.readAllRegs();
     }
-    else if (input >= 48 && input <= 57) //0-9
-    {
-      Serial.print("\nWriteByte("); Serial.print(input); Serial.print(")");
-      flash.writeByte(input-48, millis()%2 ? 0xaa : 0xbb);
-    }
   }
   
   // Check for existing RF data, potentially for a new sketch wireless upload
-  // For this to work this check has to be done often enough to be
-  // picked up when a GATEWAY is trying hard to reach this node for a new sketch wireless upload
+
   if (radio.receiveDone())
   {
     Serial.print("Got [");
@@ -239,7 +238,6 @@ void loop(){
     CheckForWirelessHEX(radio, flash, false);
     Serial.println();
   }
-  //else Serial.print('.');
   
   //*****************************************************************************************************************************
   // Real sketch code here, let's blink the onboard LED
